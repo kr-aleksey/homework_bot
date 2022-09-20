@@ -7,7 +7,8 @@ import requests
 import telegram
 from dotenv import load_dotenv
 
-from exceptions import APIUnavailableException, EnvVarMissingException, TelegramBotException
+from exceptions import APIUnavailableException, EnvVarMissingException
+from exceptions import TelegramBotException
 from exceptions import IncorrectAPIResponseException
 
 load_dotenv()
