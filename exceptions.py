@@ -3,10 +3,12 @@ class EnvVarMissingException(Exception):
 
 
 class IncorrectAPIResponseException(KeyError):
-    def __init__(self, message='Некорректный ответ API'):
-        super().__init__(message)
+    pass
 
 
 class APIUnavailableException(Exception):
-    def __init__(self, message='API недоступен'):
-        super().__init__(message)
+    pass
+
+
+class TelegramBotException(Exception):
+    pass

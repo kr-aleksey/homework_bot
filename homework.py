@@ -7,7 +7,7 @@ import requests
 import telegram
 from dotenv import load_dotenv
 
-from exceptions import APIUnavailableException, EnvVarMissingException
+from exceptions import APIUnavailableException, EnvVarMissingException, TelegramBotException
 from exceptions import IncorrectAPIResponseException
 
 load_dotenv()
@@ -29,14 +29,19 @@ HOMEWORK_STATUSES = {
 
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s %(levelname)s %(message)s',
+    format='%(asctime)s %(levelname)s %(message)s'
 )
 
 
 def send_message(bot, message):
     """Отправляет сообщение в Telegram."""
     logging.debug('Отправка сообщения в Telegram.')
-    bot.send_message(TELEGRAM_CHAT_ID, message)
+    try:
+        bot.send_message(TELEGRAM_CHAT_ID, message)
+    except Exception as error:
+        raise TelegramBotException(
+            f'Ошибка отправки сообщения Telegram. {error}'
+        )
 
 
 def get_api_answer(current_timestamp):
@@ -45,11 +50,11 @@ def get_api_answer(current_timestamp):
     params = {'from_date': current_timestamp}
     try:
         response = requests.get(ENDPOINT, params, headers=HEADERS)
-    except Exception:
-        raise APIUnavailableException
+    except Exception as error:
+        raise APIUnavailableException(f'API недоступен. {error}')
     if response.status_code != HTTPStatus.OK:
         raise APIUnavailableException(
-            f'API недоступен, код ответа {response.status_code}'
+            f'API недоступен, код ответа сервера {response.status_code}'
         )
     return response.json()
 
@@ -60,9 +65,13 @@ def check_response(response):
     try:
         homeworks = response['homeworks']
     except KeyError:
-        raise IncorrectAPIResponseException
-    if type(homeworks) != list:
-        raise IncorrectAPIResponseException
+        raise IncorrectAPIResponseException(
+            'Некорректный ответ API, на найден ключ "homeworks"'
+        )
+    if not isinstance(homeworks, list):
+        raise IncorrectAPIResponseException(
+            'Некорректный ответ API, type(homeworks) != list'
+        )
     logging.debug(f'Количество домашних работ в ответе API: {len(homeworks)}')
     return homeworks
 
@@ -75,7 +84,7 @@ def parse_status(homework):
         homework_status = homework['status']
     except KeyError:
         raise IncorrectAPIResponseException
-    if homework_status not in HOMEWORK_STATUSES.keys():
+    if homework_status not in HOMEWORK_STATUSES:
         raise IncorrectAPIResponseException
     verdict = HOMEWORK_STATUSES.get(homework_status)
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
@@ -84,10 +93,8 @@ def parse_status(homework):
 def check_tokens():
     """Проверяет доступность переменных окружения."""
     logging.debug('Проверка доступности переменных окружения.')
-    env_variables = [PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID]
-    for variable in env_variables:
-        if variable is None:
-            return False
+    if None in (PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID):
+        return False
     return True
 
 
@@ -106,22 +113,20 @@ def main():
         try:
             response = get_api_answer(current_timestamp)
             home_works = check_response(response)
-            for home_work in home_works:
-                errormessage = parse_status(home_work)
-                send_message(bot, errormessage)
-
-            current_timestamp = response.get('current_date')
-            time.sleep(RETRY_TIME)
-
+            if len(home_works) > 0:
+                message = parse_status(home_works[0])
+                send_message(bot, message)
+            current_timestamp = response.get('current_date', current_timestamp)
         except Exception as error:
             errormessage = f'Сбой в работе программы: {error}'
             logging.critical(errormessage)
             if current_error != errormessage:
                 current_error = errormessage
                 send_message(bot, errormessage)
-            time.sleep(RETRY_TIME)
         else:
             current_error = None
+        finally:
+            time.sleep(RETRY_TIME)
 
 
 if __name__ == '__main__':
